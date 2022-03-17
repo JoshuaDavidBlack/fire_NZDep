@@ -93,7 +93,7 @@ intersections <- intersections %>%
 # calculations.
 intersections <- intersections %>%
   mutate(
-    overlap_prop = intersection_area / (AREA_SQ_KM * 1000000)
+    overlap_prop = intersection_area / (AREA_SQ_KM * 1000000) # TODO: weight by proportion of *fire locality*.
   )
 
 # Add NZ Deprivation index data.
