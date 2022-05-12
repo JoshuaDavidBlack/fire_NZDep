@@ -41,20 +41,21 @@ intersections <- intersections %>%
   unnest(cols = value)
 # We are left with 58083 intersections.
 
-# We only know which statistical area intersects by virtue of its index in the
-# `stat_location` object. We use this to join the statistical areas to the
-# fire localities.
-intersections <- intersections %>%
-  left_join(
-    stat_locations %>%
-      mutate(
-        value = 1,
-        value = cumsum(value)
-      ),
-    by = c('value')
+# We only know which statistical area intersects by virtue of its row number in
+# the `stat_location` dataframe. We use this to join the statistical areas to
+# the fire localities.
+
+# We first add a column with row numbers to `stat_locations`
+stat_locations <- stat_locations %>%
+  mutate(
+    value = 1,
+    value = cumsum(value)
   )
 
-# Some intersections are _very_ small (this found by manually inspecting the
+intersections <- intersections %>%
+  left_join(as_tibble(stat_locations), by = c('value'))
+
+# Some intersections are _very_ small (this was found by manually inspecting the
 # data for Christchurch). We will perform a weighted mean of the deprivation
 # index so that each statistical area contributes values to the overall mean for
 # a fire locality relative to how much of it is in the fire locality.
@@ -77,12 +78,14 @@ collect_intersect_area <- function(fire_id, sa1_code) {
 
 # We apply the function to all intersections.
 # This takes a while, and is probably not efficient (perhaps the package furrr
-# would help). An alternative fasted method would be to use the larger SA2 
-# statistical areas.
+# would help here by enabling multiple areas to be generated at once). An
+# alternative faster method would be to use the NZDep data for the larger SA2
+# statistical areas. These are available at:
+# https://www.otago.ac.nz/wellington/departments/publichealth/research/hirp/otago020194.html#2018
 intersections <- intersections %>%
   mutate(
     intersection_area = map2_dbl(
-      id, 
+      id,
       SA12018_V1, # statistical area name from stats dataset.
       collect_intersect_area
     )
@@ -93,10 +96,10 @@ intersections <- intersections %>%
 # calculations.
 intersections <- intersections %>%
   mutate(
-    overlap_prop = intersection_area / (AREA_SQ_KM * 1000000) # TODO: weight by proportion of *fire locality*.
+    overlap_prop = intersection_area / (AREA_SQ_KM * 1000000)
   )
 
-# Add NZ Deprivation index data.
+# Add NZ Deprivation index data
 intersections <- intersections %>%
   left_join(
     sa1_se %>%
@@ -108,19 +111,32 @@ intersections <- intersections %>%
       )
   )
 
+# Take weighted mean by proportion of overlap for SA1 with fire locality.
+# Also take weighted sum of URpop and calculate what proportion of the sum
+# is at decile 9 or 10.
 fire_se <- intersections %>%
   group_by(id) %>%
   summarise(
     NZdep_mean = weighted.mean(
-      NZDep2018_Score, 
-      overlap_prop, 
+      NZDep2018_Score,
+      overlap_prop,
       na.rm=TRUE
     ),
     NZdep_quant_mean = weighted.mean(
       NZDep2018,
       overlap_prop,
       na.rm=TRUE
-    )
+    ),
+    URPopn_weighted = sum(overlap_prop * URPopnSA1_2018),
+    URPopn_weighted_high = sum(
+      if_else(
+        NZDep2018 %in% c(9, 10),
+        URPopnSA1_2018,
+        0
+      ) *
+      overlap_prop
+    ),
+    URPopn_perc_high = (URPopn_weighted_high / URPopn_weighted) *  100
   )
 
 # Add NZDep information to fire localities data set.
@@ -146,19 +162,19 @@ st_write(fire_locations, here('processed_data', 'fire_dep2018.shp'))
 
 # We look at the names.
 names(fire_locations)
-# [1] "id"               "parent_id"        "suburb_4th"       "suburb_3rd"       "suburb_2nd"       "suburb_1st"      
-# [7] "type_order"       "type"             "city_id"          "city_name"        "has_addres"       "start_date"      
-# [13] "end_date"         "majorlocal"       "majorloc_1"       "NZdep_mean"       "NZdep_quant_mean" "geometry"   
+# [1] "id"                   "parent_id"            "suburb_4th"           "suburb_3rd"           "suburb_2nd"          
+# [6] "suburb_1st"           "type_order"           "type"                 "city_id"              "city_name"           
+# [11] "has_addres"           "start_date"           "end_date"             "majorlocal"           "majorloc_1"          
+# [16] "NZdep_mean"           "NZdep_quant_mean"     "URPopn_weighted"      "URPopn_weighted_high" "URPopn_perc_high"    
+# [21] "geometry"   
 
-# We select a subset
+# We select a subset for our output csv
 out_sheet_data <- fire_locations %>%
   as_tibble() %>%
   select(
     c('id', 'parent_id', 'suburb_4th', 'suburb_3rd', 'suburb_2nd', 'suburb_1st',
-    'city_id', 'city_name', 'majorlocal', 'majorloc_1', 'NZdep_mean', 
-    'NZdep_quant_mean')
+      'city_id', 'city_name', 'majorlocal', 'majorloc_1', 'NZdep_mean',
+      'NZdep_quant_mean', 'URPopn_perc_high')
   )
 
 write_csv(out_sheet_data, here('processed_data', 'fire_dep2018.csv'))
-
-## Look at variable names to decide which to keep:
