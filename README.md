@@ -30,3 +30,8 @@ Create a 'data' folder in the project folder. Inside, place the following:
 ### To use the processed data
 
 The `processed_data` folder contains (a) a csv file of the resulting Fire Service locality deprivation scores and (b) the Fire Service locality shape file augmented with the deprivation scores in a compressed file (`fire_dep2018.zip`).
+
+* In `fire_dep2018.csv`, each row is a fire locality, various location names and ids are given, along with:
+  - `NZdep_mean` the mean NZdep score for the locality, calculated by weighted average of the scores for the SA1 areas which intersect the locality.
+  - `NZdep_quant_mean` the mean NZdep quantile for the locality, calculated as above.
+  - `URPopn_perc_high` the percentage of usual resident population of the locality in the 9th or 10th quantile, calculated from weighted sum of intersecting SA1 populations and weigted sum of intersecting high quantile SA1 populations.
